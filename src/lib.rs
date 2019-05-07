@@ -161,20 +161,25 @@ impl LoginedAgent {
         //let doc = dbg!(doc);
         // Parse
         let rows = Attr("id", "dataList").descendant(Name("tr"));
-        let courses = doc.find(rows).skip(1).map(|row| {
+        let courses = doc.find(rows).skip(1).filter_map(|row| {
             let mut elems = row.find(Name("td"));
             elems.next();  // drop column id
-            Course {
-                term: elems.next().text(),
-                code: elems.next().text(),
-                name: elems.next().text(),
-                grade: elems.next().text(),
-                score: elems.next().text(),
-                point: elems.next().text(),
-                hours: elems.next().text(),
-                eval_method: elems.next().text(),
-                course_type: elems.next().text(),
-                category: elems.next().text(),
+            if let (Some(term), Some(code)) = (elems.next(), elems.next()) {
+                // First two elem is requried
+                Some(Course {
+                    term: term.text(),
+                    code: code.text(),
+                    name: elems.next().text(),
+                    grade: elems.next().text(),
+                    score: elems.next().text(),
+                    point: elems.next().text(),
+                    hours: elems.next().text(),
+                    eval_method: elems.next().text(),
+                    course_type: elems.next().text(),
+                    category: elems.next().text(),
+                })
+            } else {
+                None
             }
         });
 
