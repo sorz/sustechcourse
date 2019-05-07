@@ -1,5 +1,7 @@
-use actix_web::{http::Method, server, App, Json, Result};
+use actix_web::{
+    http::Method, server, App, Json, Result, middleware::Logger};
 use serde::Deserialize;
+use env_logger;
 use sustechcourse::{Course, UserAgent};
 
 #[derive(Deserialize)]
@@ -20,7 +22,12 @@ fn query_course(info: Json<CourseQueryInfo>) -> Result<Json<Vec<Course>>> {
 }
 
 fn main() {
-    server::new(|| App::new().resource("/", |r| r.method(Method::POST).with(query_course)))
+    std::env::set_var("RUST_LOG", "actix_web=info");
+    env_logger::init();
+    server::new(|| App::new()
+            .middleware(Logger::new("%a"))
+            .resource("/", |r| r.method(Method::POST).with(query_course))
+        )
         .bind("127.0.0.1:8000")
         .expect("Can not bind to port 8000")
         .run();
