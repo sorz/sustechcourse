@@ -6,6 +6,7 @@ use select::{
     predicate::{Predicate, Attr, Class, Name},
 };
 use failure::{Error, Fail};
+use serde::Serialize;
 
 const URL_CAS_LOGIN: &str = "https://cas.sustech.edu.cn/cas/login";
 const URL_COURSE_FORM: &str = "http://jwxt.sustech.edu.cn/jsxsd/kscj/cjcx_query";
@@ -22,7 +23,7 @@ pub struct LoginedAgent {
     client: Client
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Course {
     pub code: String,
     pub term: String,
@@ -158,7 +159,6 @@ impl LoginedAgent {
         let doc = self.client.post(URL_COURSE_QUERY)
             .form(&form).send()?.parse()?;
 
-        //let doc = dbg!(doc);
         // Parse
         let rows = Attr("id", "dataList").descendant(Name("tr"));
         let courses = doc.find(rows).skip(1).filter_map(|row| {
