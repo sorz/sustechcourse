@@ -1,10 +1,11 @@
 use std::collections::HashMap;
-use reqwest::{Result, Client, Response};
+use reqwest::{self, Client, Response};
 use select::{
     node::Node,
     document::Document,
     predicate::{Predicate, Attr, Class, Name},
 };
+use failure::{Error, Fail};
 
 const URL_CAS_LOGIN: &str = "https://cas.sustech.edu.cn/cas/login";
 const URL_COURSE_FORM: &str = "http://jwxt.sustech.edu.cn/jsxsd/kscj/cjcx_query";
@@ -43,6 +44,13 @@ pub struct CourseQuery<'a> {
     years: Vec<String>,
 }
 
+#[derive(Debug, Fail)]
+enum CourseError {
+    #[fail(display = "cannot login: {}", message)]
+    LoginError {
+        message: String,
+    }
+}
 
 impl From<Client> for UserAgent {
     fn from(client: Client) -> UserAgent {
@@ -51,11 +59,11 @@ impl From<Client> for UserAgent {
 }
 
 trait ResponseExt {
-    fn parse(self) -> Result<Document>;
+    fn parse(self) -> Result<Document, Error>;
 }
 
 impl ResponseExt for Response {
-    fn parse(mut self) -> Result<Document> {
+    fn parse(mut self) -> Result<Document, Error> {
         let doc = self
             .text()?
             .as_str()
@@ -103,7 +111,7 @@ impl UserAgent {
         UserAgent { client }
     }
 
-    pub fn login<S: AsRef<str>>(self, username: S, password: S) -> Result<LoginedAgent> {
+    pub fn login<S: AsRef<str>>(self, username: S, password: S) -> Result<LoginedAgent, Error> {
         let UserAgent { client } = self;
 
         // Retrive login <form> and all its <input>
@@ -124,20 +132,21 @@ impl UserAgent {
                 Some(status) if status.is_client_error() => {
                     // Try to extract err message
                     let predicate = Attr("id", "fm1").descendant(Class("alert"));
-                    if let Some(alert) = resp.parse()?.find(predicate).next() {
-                        panic!("login failed: {}", alert.text().trim());
+                    let message = if let Some(alert) = resp.parse()?.find(predicate).next() {
+                        alert.text().trim().to_string()
                     } else {
-                        panic!("login failed: {}", status);
-                    }
+                        format!("server return {}", status)
+                    };
+                    Err(CourseError::LoginError { message }.into())
                 }
-                _ => Err(err)
+                _ => Err(err.into())
             }
         }
     }
 }
 
 impl LoginedAgent {
-    pub fn query_course(&mut self, year: u16, term: u8) -> Result<Vec<Course>> {
+    pub fn query_course(&mut self, year: u16, term: u8) -> Result<Vec<Course>, Error> {
         // Form form
         let doc = self.client.get(URL_COURSE_FORM)
             .send()?.error_for_status()?.parse()?;
