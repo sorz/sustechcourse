@@ -1,9 +1,6 @@
-use actix_web::{
-    server, App, Json, Result,
-    http::Method,    
-};
-use sustechcourse::{UserAgent, Course};
+use actix_web::{http::Method, server, App, Json, Result};
 use serde::Deserialize;
+use sustechcourse::{Course, UserAgent};
 
 #[derive(Deserialize)]
 struct CourseQueryInfo {
@@ -13,9 +10,8 @@ struct CourseQueryInfo {
 }
 
 fn query_course(info: Json<CourseQueryInfo>) -> Result<Json<Vec<Course>>> {
-    let mut agent = UserAgent::new()
-        .login(&info.username, &info.password)?;
-    
+    let mut agent = UserAgent::new().login(&info.username, &info.password)?;
+
     let mut courses = vec![];
     for (year, term) in &info.terms {
         courses.append(&mut agent.query_course(*year, *term)?);
@@ -24,11 +20,8 @@ fn query_course(info: Json<CourseQueryInfo>) -> Result<Json<Vec<Course>>> {
 }
 
 fn main() {
-    server::new(|| {
-    App::new()
-            .resource("/", |r| r.method(Method::POST).with(query_course))
-    })
-    .bind("127.0.0.1:8000")
-    .expect("Can not bind to port 8000")
-    .run();
+    server::new(|| App::new().resource("/", |r| r.method(Method::POST).with(query_course)))
+        .bind("127.0.0.1:8000")
+        .expect("Can not bind to port 8000")
+        .run();
 }

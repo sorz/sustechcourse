@@ -1,26 +1,25 @@
-use std::collections::HashMap;
+use failure::{Error, Fail};
 use reqwest::{self, Client, Response};
 use select::{
-    node::Node,
     document::Document,
-    predicate::{Predicate, Attr, Class, Name},
+    node::Node,
+    predicate::{Attr, Class, Name, Predicate},
 };
-use failure::{Error, Fail};
 use serde::Serialize;
+use std::collections::HashMap;
 
 const URL_CAS_LOGIN: &str = "https://cas.sustech.edu.cn/cas/login";
 const URL_COURSE_FORM: &str = "http://jwxt.sustech.edu.cn/jsxsd/kscj/cjcx_query";
 const URL_COURSE_QUERY: &str = "http://jwxt.sustech.edu.cn/jsxsd/kscj/cjcx_list";
 
-
 #[derive(Debug, Clone)]
 pub struct UserAgent {
-    client: Client
+    client: Client,
 }
 
 #[derive(Debug, Clone)]
 pub struct LoginedAgent {
-    client: Client
+    client: Client,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -37,7 +36,6 @@ pub struct Course {
     pub category: String,
 }
 
-
 #[derive(Debug, Clone)]
 pub struct CourseQuery<'a> {
     agent: &'a LoginedAgent,
@@ -48,9 +46,7 @@ pub struct CourseQuery<'a> {
 #[derive(Debug, Fail)]
 enum CourseError {
     #[fail(display = "cannot login: {}", message)]
-    LoginError {
-        message: String,
-    }
+    LoginError { message: String },
 }
 
 impl From<Client> for UserAgent {
@@ -65,10 +61,7 @@ trait ResponseExt {
 
 impl ResponseExt for Response {
     fn parse(mut self) -> Result<Document, Error> {
-        let doc = self
-            .text()?
-            .as_str()
-            .into();
+        let doc = self.text()?.as_str().into();
         Ok(doc)
     }
 }
@@ -116,17 +109,18 @@ impl UserAgent {
         let UserAgent { client } = self;
 
         // Retrive login <form> and all its <input>
-        let doc = client.get(URL_CAS_LOGIN)
+        let doc = client
+            .get(URL_CAS_LOGIN)
             .query(&[("service", URL_COURSE_FORM)])
-            .send()?.error_for_status()?.parse()?;
+            .send()?
+            .error_for_status()?
+            .parse()?;
         let mut form = doc.extract_form(Attr("id", "fm1"));
         form.insert("username", username.as_ref());
         form.insert("password", password.as_ref());
 
         // Post form and check result
-        let resp = client.post(URL_CAS_LOGIN)
-            .form(&form)
-            .send()?;
+        let resp = client.post(URL_CAS_LOGIN).form(&form).send()?;
         match resp.error_for_status_ref() {
             Ok(_) => Ok(LoginedAgent { client }),
             Err(err) => match err.status() {
@@ -140,8 +134,8 @@ impl UserAgent {
                     };
                     Err(CourseError::LoginError { message }.into())
                 }
-                _ => Err(err.into())
-            }
+                _ => Err(err.into()),
+            },
         }
     }
 }
@@ -149,21 +143,29 @@ impl UserAgent {
 impl LoginedAgent {
     pub fn query_course(&mut self, year: u16, term: u8) -> Result<Vec<Course>, Error> {
         // Form form
-        let doc = self.client.get(URL_COURSE_FORM)
-            .send()?.error_for_status()?.parse()?;
+        let doc = self
+            .client
+            .get(URL_COURSE_FORM)
+            .send()?
+            .error_for_status()?
+            .parse()?;
         let mut form = doc.extract_form(Attr("id", "kscjQueryForm"));
         let term = format!("{}-{}-{}", year, year + 1, term);
         form.insert("kksj", term.as_str());
 
         // Post form
-        let doc = self.client.post(URL_COURSE_QUERY)
-            .form(&form).send()?.parse()?;
+        let doc = self
+            .client
+            .post(URL_COURSE_QUERY)
+            .form(&form)
+            .send()?
+            .parse()?;
 
         // Parse
         let rows = Attr("id", "dataList").descendant(Name("tr"));
         let courses = doc.find(rows).skip(1).filter_map(|row| {
             let mut elems = row.find(Name("td"));
-            elems.next();  // drop column id
+            elems.next(); // drop column id
             if let (Some(term), Some(code)) = (elems.next(), elems.next()) {
                 // First two elem is requried
                 Some(Course {
