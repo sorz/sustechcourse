@@ -11,3 +11,4 @@ failure = "0.1.5"
 actix-web = "0.7.19"
 serde = { version = "1.0", features = ["derive"] }
 env_logger = "0.6.1"
+log = "0.4.6"
