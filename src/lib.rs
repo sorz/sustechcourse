@@ -141,6 +141,31 @@ impl UserAgent {
 }
 
 impl LoginedAgent {
+    fn parse_courses<'a>(&self, doc: &'a Document) -> impl Iterator<Item=Course> + 'a {
+        let rows = Attr("id", "dataList").descendant(Name("tr"));
+        doc.find(rows).skip(1).filter_map(|row| {
+            let mut elems = row.find(Name("td"));
+            elems.next(); // drop column id
+            if let (Some(term), Some(code)) = (elems.next(), elems.next()) {
+                // First two elem is requried
+                Some(Course {
+                    term: term.text(),
+                    code: code.text(),
+                    name: elems.next().text(),
+                    grade: elems.next().text(),
+                    score: elems.next().text(),
+                    point: elems.next().text(),
+                    hours: elems.next().text(),
+                    eval_method: elems.next().text(),
+                    course_type: elems.next().text(),
+                    category: elems.next().text(),
+                })
+            } else {
+                None
+            }
+        })
+    }
+
     pub fn query_course(&mut self, year: u16, term: u8) -> Result<Vec<Course>, Error> {
         // Form form
         let doc = self
@@ -161,31 +186,7 @@ impl LoginedAgent {
             .send()?
             .parse()?;
 
-        // Parse
-        let rows = Attr("id", "dataList").descendant(Name("tr"));
-        let courses = doc.find(rows).skip(1).filter_map(|row| {
-            let mut elems = row.find(Name("td"));
-            elems.next(); // drop column id
-            if let (Some(term), Some(code)) = (elems.next(), elems.next()) {
-                // First two elem is requried
-                Some(Course {
-                    term: term.text(),
-                    code: code.text(),
-                    name: elems.next().text(),
-                    grade: elems.next().text(),
-                    score: elems.next().text(),
-                    point: elems.next().text(),
-                    hours: elems.next().text(),
-                    eval_method: elems.next().text(),
-                    course_type: elems.next().text(),
-                    category: elems.next().text(),
-                })
-            } else {
-                None
-            }
-        });
-
-        Ok(courses.collect())
+        Ok(self.parse_courses(&doc).collect())
     }
 }
 
