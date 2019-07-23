@@ -188,3 +188,13 @@ impl LoginedAgent {
         Ok(courses.collect())
     }
 }
+
+#[test]
+fn test_get_courses() {
+    let mut agent = UserAgent::new()
+        .login(env!("USER"), env!("PASS"))
+        .unwrap();
+    let courses = agent.query_course(2018, 01).unwrap();
+    assert!(courses.len() > 0);
+    println!("courses: {:?}", courses);
+}
