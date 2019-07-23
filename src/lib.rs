@@ -9,8 +9,8 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 const URL_CAS_LOGIN: &str = "https://cas.sustech.edu.cn/cas/login";
-const URL_COURSE_FORM: &str = "http://jwxt.sustech.edu.cn/jsxsd/kscj/cjcx_query";
-const URL_COURSE_QUERY: &str = "http://jwxt.sustech.edu.cn/jsxsd/kscj/cjcx_list";
+const URL_COURSE_FORM: &str = "https://jwxt.sustech.edu.cn/jsxsd/kscj/cjcx_query";
+const URL_COURSE_QUERY: &str = "https://jwxt.sustech.edu.cn/jsxsd/kscj/cjcx_list";
 
 #[derive(Debug, Clone)]
 pub struct UserAgent {
