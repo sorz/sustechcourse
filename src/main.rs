@@ -9,17 +9,21 @@ use sustechcourse::{Course, UserAgent};
 struct CourseQueryInfo {
     username: String,
     password: String,
-    terms: Vec<(u16, u8)>,
+    terms: Option<Vec<(u16, u8)>>,
 }
 
 fn query_course(info: Json<CourseQueryInfo>) -> Result<Json<Vec<Course>>> {
     let mut agent = UserAgent::new().login(&info.username, &info.password)?;
 
-    let mut courses = vec![];
-    for (year, term) in &info.terms {
-        courses.append(&mut agent.query_course(*year, *term)?);
+    if let Some(terms) = &info.terms {
+        let mut courses = vec![];
+        for (year, term) in terms {
+            courses.append(&mut agent.query_course(*year, *term)?);
+        }
+        Ok(Json(courses))
+    } else {
+        Ok(Json(agent.all_courses()?))
     }
-    Ok(Json(courses))
 }
 
 fn main() {

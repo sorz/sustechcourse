@@ -179,23 +179,42 @@ impl LoginedAgent {
         form.insert("kksj", term.as_str());
 
         // Post form
-        let doc = self
-            .client
+        let doc = self.client
             .post(URL_COURSE_QUERY)
             .form(&form)
             .send()?
+            .error_for_status()?
             .parse()?;
 
+        Ok(self.parse_courses(&doc).collect())
+    }
+
+    pub fn all_courses(&mut self) -> Result<Vec<Course>, Error> {
+        let doc = self.client
+            .get(URL_COURSE_QUERY)
+            .send()?
+            .error_for_status()?
+            .parse()?;
         Ok(self.parse_courses(&doc).collect())
     }
 }
 
 #[test]
-fn test_get_courses() {
+fn test_query_course() {
     let mut agent = UserAgent::new()
         .login(env!("USER"), env!("PASS"))
         .unwrap();
     let courses = agent.query_course(2018, 01).unwrap();
+    assert!(courses.len() > 0);
+    println!("courses: {:?}", courses);
+}
+
+#[test]
+fn test_all_courses() {
+    let mut agent = UserAgent::new()
+        .login(env!("USER"), env!("PASS"))
+        .unwrap();
+    let courses = agent.all_courses().unwrap();
     assert!(courses.len() > 0);
     println!("courses: {:?}", courses);
 }
