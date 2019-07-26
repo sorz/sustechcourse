@@ -1,5 +1,5 @@
 use failure::{Error, Fail};
-use reqwest::{self, Client, Response};
+use reqwest::{Client, Response};
 use select::{
     document::Document,
     node::Node,

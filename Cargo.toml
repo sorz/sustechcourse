@@ -5,7 +5,7 @@ authors = ["sorz <me@sorz.org>"]
 edition = "2018"
 
 [dependencies]
-reqwest = "0.9"
+reqwest = "=0.9.17"
 select = "0.4"
 failure = "0.1.5"
 actix-web = "1.0"
