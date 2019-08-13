@@ -1,5 +1,8 @@
 use failure::{Error, Fail};
-use reqwest::r#async::Client;
+use reqwest::{
+    r#async::Client,
+    header::{USER_AGENT, REFERER, HeaderMap},
+};
 use select::{
     document::Document,
     node::Node,
@@ -13,6 +16,9 @@ use std::collections::HashMap;
 const URL_CAS_LOGIN: &str = "https://cas.sustech.edu.cn/cas/login";
 const URL_COURSE_FORM: &str = "https://jwxt.sustech.edu.cn/jsxsd/kscj/cjcx_query";
 const URL_COURSE_QUERY: &str = "https://jwxt.sustech.edu.cn/jsxsd/kscj/cjcx_list";
+
+const USER_AGENT_STRING: &str = "sustechcourse/0.1.0 (citric-acid.com.cn)";
+
 
 #[derive(Debug, Clone)]
 pub struct UserAgent {
@@ -88,10 +94,14 @@ impl FormFieldExtract for Document {
 
 impl UserAgent {
     pub fn new() -> Self {
+        let mut headers = HeaderMap::new();
+        headers.insert(USER_AGENT, USER_AGENT_STRING.parse().unwrap());
+
         let client = Client::builder()
             .gzip(true)
             .cookie_store(true)
             .use_sys_proxy()
+            .default_headers(headers)
             .build()
             .expect("fail to init http client");
         UserAgent { client }
@@ -118,7 +128,9 @@ impl UserAgent {
             debug!("login form retrived {:?}", form.keys());
             form.insert("username", username.as_ref());
             form.insert("password", password.as_ref());
-            client.post(URL_CAS_LOGIN).form(&form)
+            client.post(URL_CAS_LOGIN)
+                .form(&form)
+                .header(REFERER, URL_CAS_LOGIN)
                 .send()
                 .map(move |resp| (resp, client))
         }).map_err(|err| err.into());
