@@ -1,10 +1,12 @@
 use failure::{Error, Fail};
-use reqwest::{Client, Response};
+use reqwest::r#async::Client;
 use select::{
     document::Document,
     node::Node,
-    predicate::{Attr, Class, Name, Predicate},
+    predicate::{Attr, Name, Predicate},
 };
+use futures::Future;
+use log::debug;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -55,17 +57,6 @@ impl From<Client> for UserAgent {
     }
 }
 
-trait ResponseExt {
-    fn parse(self) -> Result<Document, Error>;
-}
-
-impl ResponseExt for Response {
-    fn parse(mut self) -> Result<Document, Error> {
-        let doc = self.text()?.as_str().into();
-        Ok(doc)
-    }
-}
-
 trait NodeExt {
     fn text(self) -> String;
 }
@@ -100,102 +91,86 @@ impl UserAgent {
         let client = Client::builder()
             .gzip(true)
             .cookie_store(true)
+            .use_sys_proxy()
             .build()
             .expect("fail to init http client");
         UserAgent { client }
     }
 
-    pub fn login<S: AsRef<str>>(self, username: S, password: S) -> Result<LoginedAgent, Error> {
+    pub fn login(self, username: String, password: String)
+        -> impl Future<Item=LoginedAgent, Error=Error>
+    {
         let UserAgent { client } = self;
+        debug!("loging in as {}", username);
 
         // Retrive login <form> and all its <input>
         let doc = client
             .get(URL_CAS_LOGIN)
             .query(&[("service", URL_COURSE_FORM)])
-            .send()?
-            .error_for_status()?
-            .parse()?;
-        let mut form = doc.extract_form(Attr("id", "fm1"));
-        form.insert("username", username.as_ref());
-        form.insert("password", password.as_ref());
+            .send()
+            .and_then(|resp| resp.error_for_status())
+            .and_then(|mut resp| resp.text())
+            .map(|text| text.as_str().into());
+        
+        // Fill the form then post
+        let post = doc.and_then(move |doc: Document| {
+            let mut form = doc.extract_form(Attr("id", "fm1"));
+            debug!("login form retrived {:?}", form.keys());
+            form.insert("username", username.as_ref());
+            form.insert("password", password.as_ref());
+            client.post(URL_CAS_LOGIN).form(&form)
+                .send()
+                .map(move |resp| (resp, client))
+        }).map_err(|err| err.into());
 
-        // Post form and check result
-        let resp = client.post(URL_CAS_LOGIN).form(&form).send()?;
-        match resp.error_for_status_ref() {
-            Ok(_) => Ok(LoginedAgent { client }),
-            Err(err) => match err.status() {
-                Some(status) if status.is_client_error() => {
-                    // Try to extract err message
-                    let predicate = Attr("id", "fm1").descendant(Class("alert"));
-                    let message = if let Some(alert) = resp.parse()?.find(predicate).next() {
-                        alert.text().trim().to_string()
-                    } else {
-                        format!("server return {}", status)
-                    };
+        // Check response
+        post.and_then(|(resp, client)| {
+            debug!("login form posted {:?}", resp);
+            match resp.error_for_status_ref() {
+                Ok(_) => Ok(LoginedAgent { client }),
+                Err(_) => {
+                    // TODO: extract err message
+                    let message = format!("server return {}", resp.status());
                     Err(CourseError::LoginError { message }.into())
                 }
-                _ => Err(err.into()),
-            },
-        }
+            }
+        })
     }
 }
 
 impl LoginedAgent {
-    fn parse_courses<'a>(&self, doc: &'a Document) -> impl Iterator<Item=Course> + 'a {
-        let rows = Attr("id", "dataList").descendant(Name("tr"));
-        doc.find(rows).skip(1).filter_map(|row| {
-            let mut elems = row.find(Name("td"));
-            elems.next(); // drop column id
-            if let (Some(term), Some(code)) = (elems.next(), elems.next()) {
-                // First two elem is requried
-                Some(Course {
-                    term: term.text(),
-                    code: code.text(),
-                    name: elems.next().text(),
-                    grade: elems.next().text(),
-                    score: elems.next().text(),
-                    point: elems.next().text(),
-                    hours: elems.next().text(),
-                    eval_method: elems.next().text(),
-                    course_type: elems.next().text(),
-                    category: elems.next().text(),
-                })
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn query_course(&mut self, year: u16, term: u8) -> Result<Vec<Course>, Error> {
-        // Form form
-        let doc = self
-            .client
-            .get(URL_COURSE_FORM)
-            .send()?
-            .error_for_status()?
-            .parse()?;
-        let mut form = doc.extract_form(Attr("id", "kscjQueryForm"));
-        let term = format!("{}-{}-{}", year, year + 1, term);
-        form.insert("kksj", term.as_str());
-
-        // Post form
-        let doc = self.client
-            .post(URL_COURSE_QUERY)
-            .form(&form)
-            .send()?
-            .error_for_status()?
-            .parse()?;
-
-        Ok(self.parse_courses(&doc).collect())
-    }
-
-    pub fn all_courses(&mut self) -> Result<Vec<Course>, Error> {
+    pub fn all_courses(&mut self) -> impl Future<Item = Vec<Course>, Error = Error> {
         let doc = self.client
             .get(URL_COURSE_QUERY)
-            .send()?
-            .error_for_status()?
-            .parse()?;
-        Ok(self.parse_courses(&doc).collect())
+            .send()
+            .and_then(|resp| resp.error_for_status())
+            .and_then(|mut resp| resp.text())
+            .map(|text| text.as_str().into())
+            .map_err(|err| err.into());
+        doc.map(|doc: Document| {
+            let rows = Attr("id", "dataList").descendant(Name("tr"));
+            doc.find(rows).skip(1).filter_map(|row| {
+                let mut elems = row.find(Name("td"));
+                elems.next(); // drop column id
+                if let (Some(term), Some(code)) = (elems.next(), elems.next()) {
+                    // First two elem is requried
+                    Some(Course {
+                        term: term.text(),
+                        code: code.text(),
+                        name: elems.next().text(),
+                        grade: elems.next().text(),
+                        score: elems.next().text(),
+                        point: elems.next().text(),
+                        hours: elems.next().text(),
+                        eval_method: elems.next().text(),
+                        course_type: elems.next().text(),
+                        category: elems.next().text(),
+                    })
+                } else {
+                    None
+                }
+            }).collect()
+        })
     }
 }
 

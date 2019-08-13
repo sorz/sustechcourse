@@ -5,10 +5,11 @@ authors = ["sorz <me@sorz.org>"]
 edition = "2018"
 
 [dependencies]
-reqwest = "=0.9.17"
+reqwest = { version="0.9.19", features = ["socks"] }
 select = "0.4"
 failure = "0.1.5"
 actix-web = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 env_logger = "0.6.2"
-log = "0.4.7"
+log = "0.4.8"
+futures = "0.1.28"
